@@ -17,6 +17,7 @@ import { printSessionReport } from '../lib/reportPdf';
 import type { Session } from '../lib/types';
 import { ErrorNotice, Loading } from '../components/Common';
 import { SessionComparison } from '../components/SessionComparison';
+import { ProgressChart } from '../components/ProgressChart';
 
 export function Dashboard({ navigate }: { navigate: (path: string) => void }) {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -135,6 +136,7 @@ export function Dashboard({ navigate }: { navigate: (path: string) => void }) {
           <span>Debriefs ready</span>
         </div>
       </section>
+      <ProgressChart />
       <section className="history-section">
         <div className="section-heading">
           <div>

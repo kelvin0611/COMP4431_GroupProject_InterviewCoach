@@ -86,6 +86,35 @@ export const reportSchema = z.object({
   citations: z.array(citationSchema),
   limitations: z.array(z.string()),
 });
+export const STAR_ELEMENTS = ['Situation', 'Task', 'Action', 'Result'] as const;
+const starElementSchema = z.enum(STAR_ELEMENTS);
+export const answeredTurnSchema = z.object({
+  turn_id: z.string(),
+  question: z.string(),
+  transcript: z.string(),
+  language: z.enum(['en-HK', 'zh-HK']),
+  segments: z.array(z.object({ text: z.string(), element: starElementSchema.nullable() })),
+});
+export const progressPointSchema = z.object({
+  session_id: z.string(),
+  created_at: z.string(),
+  role_title: z.string(),
+  language: z.enum(['en-HK', 'zh-HK']),
+  answer_count: z.number(),
+  covered: z.array(starElementSchema),
+});
+export const polishedAnswerSchema = z.object({
+  turn_id: z.string(),
+  target_language: z.enum(['en-HK', 'zh-HK']),
+  parts: z.array(
+    z.object({ element: starElementSchema, text: z.string(), placeholder: z.boolean() }),
+  ),
+  provider: z.enum(['llama', 'demo']),
+});
+export type StarElement = (typeof STAR_ELEMENTS)[number];
+export type AnsweredTurn = z.infer<typeof answeredTurnSchema>;
+export type ProgressPoint = z.infer<typeof progressPointSchema>;
+export type PolishedAnswer = z.infer<typeof polishedAnswerSchema>;
 export type Citation = z.infer<typeof citationSchema>;
 export type Profile = z.infer<typeof profileSchema>;
 export type Answer = z.infer<typeof answerSchema>;

@@ -157,3 +157,47 @@ class SessionReport(StrictModel):
 
 class SpeechConsent(StrictModel):
     consent: Literal[True]
+
+
+StarElement = Literal["Situation", "Task", "Action", "Result"]
+
+
+class StarSegment(StrictModel):
+    """A run of answer text and the STAR element its keywords suggest (None if unlabelled)."""
+
+    text: str
+    element: StarElement | None
+
+
+class AnsweredTurn(StrictModel):
+    turn_id: str
+    question: str
+    transcript: str
+    language: Language
+    segments: list[StarSegment]
+
+
+class ProgressPoint(StrictModel):
+    session_id: str
+    created_at: str
+    role_title: str
+    language: Language
+    answer_count: int
+    covered: list[StarElement]
+
+
+class PolishRequest(StrictModel):
+    target_language: Language = "en-HK"
+
+
+class PolishedPart(StrictModel):
+    element: StarElement
+    text: str
+    placeholder: bool
+
+
+class PolishedAnswer(StrictModel):
+    turn_id: str
+    target_language: Language
+    parts: list[PolishedPart]
+    provider: Literal["llama", "demo"]

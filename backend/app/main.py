@@ -13,16 +13,21 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import UploadFile
 
+from .answer_tools import PolishUnavailable, answered_turns, polish_answer, progress_points
 from .config import ROOT, Settings
 from .db import Base, ChunkRecord, JobRecord, SessionRecord, make_database, new_id
 from .ingestion import MAX_FILE_BYTES, chunk_text, extract_file, profile_metadata, validate_text
 from .retrieval import index_chunks, seed_knowledge
 from .schemas import (
+    AnsweredTurn,
     AnswerSubmission,
     ClientEvent,
     Control,
+    PolishedAnswer,
+    PolishRequest,
     Profile,
     ProfileInput,
+    ProgressPoint,
     Session,
     SessionInput,
     SessionReport,
@@ -85,6 +90,10 @@ class LocalBoundary:
 
             receive = buffered_receive
         await self.app(scope, receive, send)
+
+
+# Sessions shown on the overview progress chart.
+PROGRESS_LIMIT = 30
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -237,6 +246,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(
                 409, "Report generation was cancelled. Request it again when ready."
             ) from exc
+
+    @app.get("/api/sessions/{session_id}/answers", response_model=list[AnsweredTurn])
+    async def session_answers(session_id: str):
+        with sessions() as db:
+            return answered_turns(session_view(service.get(db, session_id)))
+
+    @app.post("/api/sessions/{session_id}/turns/{turn_id}/polish", response_model=PolishedAnswer)
+    async def polish(session_id: str, turn_id: str, data: PolishRequest | None = None):
+        request = data or PolishRequest()
+        with sessions() as db:
+            session = session_view(service.get(db, session_id))
+        turn = next((item for item in session.turns if item.id == turn_id), None)
+        if turn is None:
+            raise HTTPException(404, "That answer is not part of this session.")
+        if turn.answer is None:
+            raise HTTPException(409, "This question has not been answered yet.")
+        try:
+            return await polish_answer(
+                settings,
+                turn_id,
+                turn.question.interviewer_text,
+                turn.answer.transcript,
+                turn.answer.language,
+                request.target_language,
+            )
+        except PolishUnavailable as exc:
+            raise HTTPException(
+                503, "A reliable rewrite could not be generated. Try again in a moment."
+            ) from exc
+
+    @app.get("/api/progress", response_model=list[ProgressPoint])
+    async def progress():
+        with sessions() as db:
+            records = db.scalars(
+                select(SessionRecord)
+                .order_by(SessionRecord.created_at.desc())
+                .limit(PROGRESS_LIMIT)
+            )
+            return progress_points([session_view(record) for record in records])
 
     @app.delete("/api/sessions/{session_id}", status_code=204)
     async def delete_session(session_id: str):

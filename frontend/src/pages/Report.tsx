@@ -14,6 +14,7 @@ import { formatDuration } from '../lib/format';
 import { printSessionReport } from '../lib/reportPdf';
 import type { Report as ReportType } from '../lib/types';
 import { ErrorNotice, Loading, Sources } from '../components/Common';
+import { StarAnswers } from '../components/StarAnswers';
 
 export function Report({ id, navigate }: { id: string; navigate: (path: string) => void }) {
   const [report, setReport] = useState<ReportType | null>(null);
@@ -216,6 +217,7 @@ export function Report({ id, navigate }: { id: string; navigate: (path: string) 
           </div>
         </section>
       </div>
+      <StarAnswers sessionId={id} />
       <section className="report-footnotes">
         <Sources citations={report.citations} />
         <details>

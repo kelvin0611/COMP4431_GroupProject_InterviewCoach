@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { profileSchema, reportSchema, sessionSchema } from './types';
+import {
+  answeredTurnSchema,
+  polishedAnswerSchema,
+  profileSchema,
+  progressPointSchema,
+  reportSchema,
+  sessionSchema,
+} from './types';
 import type { Answer, ControlAction, Health, Language, Methodology } from './types';
 
 export async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
@@ -62,6 +69,18 @@ export const api = {
     ),
   report: async (id: string) =>
     reportSchema.parse(await request(`/api/sessions/${encodeURIComponent(id)}/report`)),
+  answers: async (id: string) =>
+    z
+      .array(answeredTurnSchema)
+      .parse(await request(`/api/sessions/${encodeURIComponent(id)}/answers`)),
+  polish: async (id: string, turnId: string, target_language: Language) =>
+    polishedAnswerSchema.parse(
+      await request(
+        `/api/sessions/${encodeURIComponent(id)}/turns/${encodeURIComponent(turnId)}/polish`,
+        post({ target_language }),
+      ),
+    ),
+  progress: async () => z.array(progressPointSchema).parse(await request('/api/progress')),
   delete: (id: string) => request(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   token: () =>
     request<{ token: string; region: string; expires_in: number }>(
@@ -91,7 +110,6 @@ export function healthOnce(): Promise<Health> {
   }
   return cachedHealth;
 }
-
 
 export const errorMessage = (error: unknown) =>
   error instanceof z.ZodError
