@@ -2,10 +2,72 @@
 
 import hashlib
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from ml.dataset import read_jsonl, validate_dataset
+
+# Committed evidence for the run that actually happened; the run directory itself is gitignored.
+COMMITTED_MANIFEST = Path("ml/training_evidence/voxprep-qlora-v5/model_manifest.json")
+
+
+def lora_adapter_path(root=Path(".")):
+    """Adapter named by LORA_PATH in .env, resolved the way scripts/dev.py resolves it."""
+    root = Path(root)
+    env = root / ".env"
+    if not env.is_file():
+        return None
+    value = ""
+    for line in env.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("LORA_PATH=") and not stripped.startswith("#"):
+            value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+    if not value:
+        return None
+    path = Path(value)
+    path = path if path.is_absolute() else root / path
+    return path if path.is_file() else None
+
+
+def model_evaluation_metadata(root=Path(".")):
+    """Held-out model comparison, with the paired base-vs-adapter count the deck quotes."""
+    path = Path(root) / "evaluation/results/model.json"
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    by_prompt = defaultdict(dict)
+    for record in data.get("records", []):
+        by_prompt[record["id"]][record["variant"]] = record
+    improved = regressed = unchanged = 0
+    for variants in by_prompt.values():
+        base, adapted = variants.get("base_rag"), variants.get("lora_rag")
+        if not base or not adapted:
+            continue
+        if base["language_proxy_pass"] and adapted["language_proxy_pass"]:
+            unchanged += 1
+        elif not base["language_proxy_pass"] and adapted["language_proxy_pass"]:
+            improved += 1
+        elif base["language_proxy_pass"] and not adapted["language_proxy_pass"]:
+            regressed += 1
+    return {
+        "status": data.get("status"),
+        "recorded_at": data.get("recorded_at"),
+        "sample_size": data.get("sample_size"),
+        "variants": {
+            name: {
+                "schema_validity": summary.get("schema_validity"),
+                "language_script_proxy": summary.get("language_script_proxy"),
+                "first_token_p95_seconds": summary.get("first_token_p95_seconds"),
+            }
+            for name, summary in data.get("summary", {}).items()
+        },
+        "paired_base_vs_adapter": {
+            "improved": improved,
+            "regressed": regressed,
+            "unchanged": unchanged,
+        },
+        "source": "evaluation/results/model.json",
+    }
 
 
 def training_metadata(root=Path(".")):
@@ -86,7 +148,15 @@ def training_metadata(root=Path(".")):
         },
     }
     run = root / config["output_dir"]
+    adapter = lora_adapter_path(root)
     manifest_path = run / "model_manifest.json"
+    manifest_source = "run"
+    if not manifest_path.is_file():
+        committed = root / COMMITTED_MANIFEST
+        if committed.is_file():
+            manifest_path = committed
+            manifest_source = "committed_evidence"
+    metadata["manifest_source"] = manifest_source
     if manifest_path.is_file():
         try:
             manifest = json.loads(manifest_path.read_text())
@@ -124,9 +194,10 @@ def training_metadata(root=Path(".")):
                     "reviewed_examples": manifest["dataset"]["review_validation"][
                         "reviewed"
                     ],
-                    "adapter_available": (
-                        run / "adapter/adapter_model.safetensors"
-                    ).is_file(),
+                    "adapter_available": bool(
+                        adapter or (run / "adapter/adapter_model.safetensors").is_file()
+                    ),
+                    "adapter_path": str(adapter) if adapter else None,
                     "best_validation_loss": manifest["best_validation_loss"],
                 }
             )
@@ -141,7 +212,7 @@ def training_metadata(root=Path(".")):
                 {
                     "base_model": manifest["base_model"],
                     "base_revision": manifest["base_revision"],
-                    "adapter_status": "Completed training manifest recorded; inspect adapter_available for local artifact presence",
+                    "adapter_status": ("QLoRA adapter trained and served through llama.cpp --lora" if adapter else "QLoRA adapter trained; local adapter file not present"),
                     "limitations": [
                         "Training completion alone does not demonstrate model quality",
                         "Citation identity and exact excerpts do not establish semantic support",
@@ -167,6 +238,9 @@ def refresh_latest(root=Path(".")):
         }
     )
     data["training"] = training_metadata(root)
+    comparison = model_evaluation_metadata(root)
+    if comparison:
+        data["model_evaluation"] = comparison
     if data["training"]["status"] == "training_completed":
         data["limitations"] = [
             line

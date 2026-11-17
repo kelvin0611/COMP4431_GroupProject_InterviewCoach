@@ -105,5 +105,14 @@ export type Methodology = {
   provider: string;
   training: Record<string, unknown>;
   evaluations: Record<string, unknown>[];
+  model_evaluation?: {
+    sample_size: number;
+    status: string;
+    variants: Record<
+      string,
+      { schema_validity: number; language_script_proxy: number; first_token_p95_seconds: number }
+    >;
+    paired_base_vs_adapter: { improved: number; regressed: number; unchanged: number };
+  } | null;
   limitations: string[];
 };

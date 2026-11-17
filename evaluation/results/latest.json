@@ -2,14 +2,14 @@
   "status": "development_evidence_only",
   "provider": "configured_at_runtime",
   "training": {
-    "status": "not_trained",
+    "status": "training_completed",
     "base_model": "Qwen/Qwen3-4B-Instruct-2507",
     "base_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
     "draft_examples": 971,
     "reviewed_examples": 971,
-    "adapter_available": false,
+    "adapter_available": true,
     "manifest_path": "ml/runs/voxprep-qlora/model_manifest.json",
-    "manifest_available": false,
+    "manifest_available": true,
     "expected_examples": 971,
     "configuration": {
       "base_model": "Qwen/Qwen3-4B-Instruct-2507",
@@ -40,7 +40,7 @@
         "gradient_checkpointing": true,
         "optimizer": "paged_adamw_8bit",
         "checkpoint_selection": "Lowest validation loss; load_best_model_at_end",
-        "execution": "One CUDA GPU; no training run recorded",
+        "execution": "Training manifest recorded; held-out and human evaluation still required",
         "source": "ml/train.py"
       }
     },
@@ -67,25 +67,65 @@
       "reviewed_examples": 971,
       "split_policy": "80/10/10; connected role, source and template groups stay together",
       "review_policy": "First human approval for every example; independent second review for at least 15% per full-corpus language/task stratum",
-      "guide": "docs/DATASET.md"
+      "guide": "docs/DATASET.md",
+      "trained_dataset_manifest": {
+        "created_at": "2026-11-16T19:01:46.187242+00:00",
+        "source_sha256": "4f03768f80d22999bc2cdef1a0860ee222e6f7051c9293b187703a048a519502",
+        "seed": 42,
+        "grouping": [
+          "role_family",
+          "source_id",
+          "template_family"
+        ],
+        "counts": {
+          "train": 790,
+          "validation": 62,
+          "test": 119
+        },
+        "sha256": {
+          "train": "1aa87e612daac15a67dc75dd89aeabb8b7cc6b2f75acb7b9fb4cfa0116d94582",
+          "validation": "7b071b012682fc59f132a129175c532657e66d1b4a330020172111f52492b612",
+          "test": "7afd0e46abc1af8aa2466616980ae8c45ed5f0c80c549efa10a7df7ca03b08f9"
+        },
+        "review_validation": {
+          "valid": true,
+          "count": 971,
+          "reviewed": 971,
+          "language_counts": {
+            "en-HK": 579,
+            "zh-HK": 392
+          },
+          "task_counts": {
+            "question": 448,
+            "report": 323,
+            "safety": 200
+          },
+          "double_review_count": 148,
+          "errors": [],
+          "near_duplicates": []
+        }
+      }
     },
     "model_card": {
       "path": "docs/MODEL_CARD.md",
       "base_model": "Qwen/Qwen3-4B-Instruct-2507",
       "base_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
       "license": "Apache-2.0 (upstream Qwen base)",
-      "adapter_status": "Not trained; no adapter available",
+      "adapter_status": "QLoRA adapter trained and served through llama.cpp --lora",
       "intended_use": "Local English/Cantonese interview practice for Hong Kong technology graduates",
       "excluded_uses": [
         "Hiring decisions or candidate ranking",
         "Emotion, appearance, personality, protected-trait or accent-quality scoring"
       ],
       "limitations": [
-        "No fine-tuning or assessed model-quality results yet",
+        "Training completion alone does not demonstrate model quality",
         "Citation identity and exact excerpts do not establish semantic support",
         "Cantonese quality requires human assessment"
       ]
-    }
+    },
+    "manifest_source": "committed_evidence",
+    "adapter_path": "models/voxprep-lora-f16.gguf",
+    "best_validation_loss": 0.056120436638593674
   },
   "evaluations": [
     {
@@ -162,10 +202,37 @@
     }
   ],
   "limitations": [
-    "No QLoRA training or fine-tuned adapter has been produced in this environment.",
     "Synthetic curriculum drafts require independent human review and duplicate removal before training.",
     "Schema smoke tests are software checks, not model quality measurements.",
     "Language detection is a script heuristic; Cantonese adherence requires human assessment.",
     "Blinded preference, four-speaker speech tests, usability, and clean-machine release gates remain pending."
-  ]
+  ],
+  "model_evaluation": {
+    "status": "measured_pending_human_review",
+    "recorded_at": "2026-11-16T22:20:48.939208+00:00",
+    "sample_size": 119,
+    "variants": {
+      "base_rag": {
+        "schema_validity": 1.0,
+        "language_script_proxy": 0.9243697478991597,
+        "first_token_p95_seconds": 1.7636983208591117
+      },
+      "lora_only": {
+        "schema_validity": 1.0,
+        "language_script_proxy": 1.0,
+        "first_token_p95_seconds": 2.2689615583512928
+      },
+      "lora_rag": {
+        "schema_validity": 1.0,
+        "language_script_proxy": 1.0,
+        "first_token_p95_seconds": 2.030874733638484
+      }
+    },
+    "paired_base_vs_adapter": {
+      "improved": 9,
+      "regressed": 0,
+      "unchanged": 110
+    },
+    "source": "evaluation/results/model.json"
+  }
 }

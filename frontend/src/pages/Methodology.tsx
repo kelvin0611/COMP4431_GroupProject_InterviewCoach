@@ -40,6 +40,8 @@ function MetadataRecord({ value }: { value: unknown }) {
   );
 }
 
+const cellStyle = { textAlign: 'left' as const, padding: '0.4rem 1.5rem 0.4rem 0' };
+
 export function Methodology() {
   const [data, setData] = useState<MethodologyData | null>(null);
   const [error, setError] = useState('');
@@ -133,6 +135,48 @@ export function Methodology() {
                 <summary>Model card & intended use</summary>
                 <MetadataRecord value={data.training.model_card} />
               </details>
+              {data.model_evaluation && (
+                <div className="record-list" style={{ marginTop: '1rem' }}>
+                  <h3>Held-out comparison · {data.model_evaluation.sample_size} prompts</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        {['Configuration', 'Schema valid', 'Requested language', 'p95 first token'].map(
+                          (label) => (
+                            <th
+                              key={label}
+                              style={{
+                                textAlign: 'left',
+                                padding: '0.35rem 1.5rem 0.35rem 0',
+                                whiteSpace: 'nowrap',
+                                borderBottom: '1px solid var(--line, #dfe3dc)',
+                              }}
+                            >
+                              {label}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(data.model_evaluation.variants).map(([name, row]) => (
+                        <tr key={name}>
+                          <td style={cellStyle}>{name.replaceAll('_', ' ')}</td>
+                          <td style={cellStyle}>{Math.round(row.schema_validity * 100)}%</td>
+                          <td style={cellStyle}>{Math.round(row.language_script_proxy * 100)}%</td>
+                          <td style={cellStyle}>{row.first_token_p95_seconds.toFixed(2)} s</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="field-help">
+                    Paired, same prompt each time: {data.model_evaluation.paired_base_vs_adapter.improved}{' '}
+                    improved, {data.model_evaluation.paired_base_vs_adapter.regressed} regressed,{' '}
+                    {data.model_evaluation.paired_base_vs_adapter.unchanged} unchanged. Automated measures
+                    only — no human rating is claimed.
+                  </p>
+                </div>
+              )}
             </section>
             <section className="panel">
               <Database size={24} />
