@@ -5,7 +5,12 @@ import { Presentation, PresentationFile } from '@oai/artifact-tool';
 const root = path.resolve(import.meta.dirname, '..');
 const runtime = path.join(process.env.HOME, '.cache/codex-runtimes/codex-primary-runtime/dependencies');
 process.env.RUNTIME_NODE_MODULES = path.join(runtime, 'node/node_modules');
-const skill = path.join(process.env.HOME, '.codex/plugins/cache/openai-primary-runtime/presentations/26.1026.10807/skills/presentations');
+// The plugin cache is versioned; pick the newest installed skill tree instead of pinning a build.
+const skillCache = path.join(process.env.HOME, '.codex/plugins/cache/openai-primary-runtime/presentations');
+const skillVersions = (await fs.readdir(skillCache).catch(() => []))
+  .filter((name) => !name.startsWith('.'))
+  .sort();
+const skill = path.join(skillCache, skillVersions.at(-1) || '', 'skills/presentations');
 const build = path.join(root, 'artifacts/presentation-build');
 await fs.mkdir(build, {recursive:true});
 const ppt = Presentation.create({slideSize:{width:1280,height:720}});
@@ -117,7 +122,7 @@ steps.forEach(([h,b],i)=>{const x=72+i*290;rect(s,x,200,260,230,i%2?C.teal:C.sag
 text(s,'Split 790 / 62 / 119, grouped by role, source and template: no leakage.',72,474,1136,50,25,C.ink,true);
 text(s,'Validation loss 0.43 → 0.056 (best checkpoint kept).',72,528,1136,50,25,C.muted);
 
-s=partSlide(P4,'Evaluation: what fine-tuning changed', `${P4.who}. 5:35–6:15. We ran all 119 held-out prompts through three configurations with identical prompts and retrieved context. Schema validity was already 100 percent for the base model, so fine-tuning did not change it. The real gain is language adherence: from 92.4 to 100 percent. Comparing the same prompt before and after, 9 were fixed and none got worse, which is significant with an exact McNemar test, p about 0.004. The typical failure was an English session whose coaching drifted into Chinese. Latency rises by about 0.3 seconds at p95. The limit: 109 of the 119 test prompts are English reports and only 4 are safety cases, so we make no claim about question quality.`);
+s=partSlide(P4,'Evaluation: what fine-tuning changed', `${P4.who}. 5:35–6:15. We ran all 119 held-out prompts through three configurations with identical prompts and retrieved context. Schema validity was already 100 percent for the base model, so fine-tuning did not change it. The real gain is language adherence: from 92.4 to 100 percent. Comparing the same prompt before and after, 9 were fixed and none got worse, which is significant with an exact McNemar test, p about 0.004. The typical failure was an English session whose coaching drifted into Chinese. Latency rises by about 0.3 seconds at p95. The limit: 109 of the 119 test prompts are English reports and only 4 are safety cases, so we make no claim about question quality. The quote box on the right is prompt rt-re-en-0178: same input, the base model coached an English report in Chinese, the adapter answered in English.`);
 text(s,'119 held-out prompts, same prompts and context',72,180,780,46,26,C.teal,true);
 const cols=[72,330,500,680];
 [['configuration',0],['schema',1],['language',2],['p95 first token',3]].forEach(([h,i])=>text(s,h,cols[i],238,240,36,20,C.muted,true));
@@ -128,6 +133,10 @@ text(s,'What it shows',920,180,300,46,26,C.teal,true);
 text(s,'Language 92.4% → 100%\nExact McNemar p ≈ 0.004\nSchema already 100%\np95 latency +0.27 s',920,232,300,130,21,C.ink);
 text(s,'What it does not show',72,528,900,40,22,C.warn,true);
 text(s,'109 of 119 test prompts are English reports and only 4 are safety cases, so there is no claim about question quality.',72,568,1136,56,19,C.muted);
+rect(s,920,368,288,146,C.sage);
+text(s,'Same prompt, base vs adapter',938,376,256,24,15,C.teal,true);
+text(s,'Base: 你當時點樣識到有問題出現？有冇見過類似情況？',938,404,256,52,13,C.warn);
+text(s,'Adapter: The setting is clear; keep it to one sentence next time.',938,458,256,50,13,C.ink);
 rect(s,72,640,1136,44,C.teal);text(s,'All numbers come from automated checks on held-out data. No human rating is claimed.',92,645,1100,34,21,C.white,true);
 
 s=partSlide(P4,'Model challenges we solved', `${P4.who}. 6:15–6:40. Our first dataset did not match the prompts the app really sends, so we rebuilt the generator and the 1,000 examples. On the T4, PyTorch reports bf16 support through slow emulation: 310 seconds per step until we forced fp16, which made training 3.7 times faster. The default Kaggle image ships a transformers version that breaks bitsandbytes, so we pinned our training requirements. The llama.cpp converter pins protobuf below version 5, which broke importing transformers during export; we restored protobuf and kept transformers off TensorFlow. The base model drifted into Chinese in English sessions; we added a per-field language validator with a retry, and the adapter fixes it at the source.`);
