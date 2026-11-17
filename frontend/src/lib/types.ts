@@ -99,6 +99,8 @@ export type Health = {
   speech: string;
   retrieval: string;
   provider: string;
+  /** Whether llama-server has a LoRA adapter attached: "loaded", "base", "none". */
+  adapter?: string;
 };
 export type Methodology = {
   status: string;

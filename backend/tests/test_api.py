@@ -153,6 +153,7 @@ def test_speech_is_honest_when_not_configured(client):
     assert client.post("/api/speech/token", json={"consent": False}).status_code == 422
     health = client.get("/api/health").json()
     assert health["provider"] == "demo"
+    assert health["adapter"] == "none"
     assert health["llm"] == "demo (not a language model)"
 
 

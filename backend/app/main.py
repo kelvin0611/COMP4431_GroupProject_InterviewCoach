@@ -304,6 +304,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if llm_ready
                 else "unavailable (deterministic fallback enabled)"
             )
+        adapter = "none"
+        if settings.model_provider == "llama":
+            adapter = "base" if llm_ready else "none"
+            if llm_ready:
+                try:
+                    async with httpx.AsyncClient(timeout=2) as client:
+                        # llama-server serves /lora-adapters at the root, not under /v1.
+                        server_root = settings.llama_base_url.rstrip("/").removesuffix("/v1")
+                        response = await client.get(f"{server_root}/lora-adapters")
+                    entries = response.json() if response.status_code == 200 else []
+                    if any(
+                        float(entry.get("scale", 0)) > 0
+                        for entry in entries
+                        if isinstance(entry, dict)
+                    ):
+                        adapter = "loaded"
+                except (httpx.HTTPError, ValueError, TypeError):
+                    pass
         speech_status = (
             "Azure configured; availability checked on use; "
             if settings.azure_speech_key and settings.azure_speech_region
@@ -331,6 +349,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "speech": speech_status,
             "retrieval": retrieval_status,
             "provider": settings.model_provider,
+            "adapter": adapter,
         }
 
     @app.get("/api/methodology/metrics")

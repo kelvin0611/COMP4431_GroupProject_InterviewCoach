@@ -79,6 +79,20 @@ export const api = {
   },
 };
 
+let cachedHealth: Promise<Health> | null = null;
+
+/** One shared health read: the provider badge must not fire a request per render. */
+export function healthOnce(): Promise<Health> {
+  if (!cachedHealth) {
+    cachedHealth = api.health().catch((error) => {
+      cachedHealth = null;
+      throw error;
+    });
+  }
+  return cachedHealth;
+}
+
+
 export const errorMessage = (error: unknown) =>
   error instanceof z.ZodError
     ? 'The service returned an invalid response. Your answer has not been discarded; please try again.'

@@ -1,4 +1,6 @@
 import { AlertCircle, ArrowUpRight, BookOpen, Check, LoaderCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { healthOnce } from '../lib/api';
 import type { Citation, Health } from '../lib/types';
 
 export function Loading({ label = 'Getting your practice ready…' }: { label?: string }) {
@@ -43,7 +45,28 @@ export function Sources({ citations }: { citations: Citation[] }) {
     </details>
   );
 }
+/** Adapter state from the local service: "loaded" or "configured" means the fine-tune is serving. */
+function useAdapterState() {
+  const [adapter, setAdapter] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    healthOnce()
+      .then((health) => {
+        if (live) setAdapter(health.adapter);
+      })
+      .catch(() => {
+        if (live) setAdapter(undefined);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return adapter;
+}
+
 export function ProviderBadge({ provider }: { provider?: string }) {
+  const adapter = useAdapterState();
+  const servingFineTune = adapter === 'loaded' || adapter === 'configured';
   return (
     <span className="provider-badge">
       <span className="status-dot" />
@@ -51,7 +74,9 @@ export function ProviderBadge({ provider }: { provider?: string }) {
         ? 'Fallback coach · scripted'
         : provider === 'demo' || !provider
           ? 'Demo coach · scripted'
-          : 'Local AI coach'}
+          : servingFineTune
+            ? 'Fine-tuned Qwen3-4B · LoRA'
+            : 'Local AI coach'}
     </span>
   );
 }
