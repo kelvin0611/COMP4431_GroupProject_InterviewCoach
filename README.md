@@ -64,7 +64,7 @@ For browser tests, install Chromium once with `pnpm --dir e2e exec playwright in
 ## Features and boundaries
 
 - TXT, text PDF and DOCX job descriptions with size/type validation and scanned-document rejection.
-- English and Traditional Chinese Cantonese interview turns with selectable difficulty and 3, 5 or 8 questions.
+- English and Traditional Chinese Cantonese interview turns with selectable difficulty and 3, 5 or 8 questions. Spoken Cantonese is transcribed by local Whisper as standard written Chinese (colloquial words appear in their written forms); the transcript is editable before sending.
 - Adaptive follow-ups, editable transcripts, pause/resume, skip/retry and typed fallback.
 - Original procedural 3D interviewer, speech animation, reduced-motion and static fallback.
 - STAR evidence, competency citations, speech summaries, practice history, two-session comparison, full transcript/report export and deletion.

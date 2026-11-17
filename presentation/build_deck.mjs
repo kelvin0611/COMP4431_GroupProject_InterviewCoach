@@ -150,10 +150,10 @@ const issues=[
 text(s,'Problem',72,172,520,34,19,C.muted,true);text(s,'Fix',640,172,560,34,19,C.muted,true);
 issues.forEach(([p,f],i)=>{const y=214+i*82;rect(s,72,y,1136,68,i%2?C.cream:C.sage);text(s,p,92,y+12,530,44,22,C.ink,true);text(s,f,640,y+12,550,44,22,C.teal);});
 
-s=base('Limits we are honest about', `${P4.who}. 6:40–7:00. Our test set is dominated by English reports, we did not run a user study or blind rating, we have not measured Cantonese speech recognition accuracy, and the adapter adds about 0.3 seconds of latency. By design, transcripts stay on the laptop, every claim shows its source, captions are editable, and the coach never scores hiring chances, accent or appearance. Thank you; we are happy to take questions.`,true);
+s=base('Limits we are honest about', `${P4.who}. 6:40–7:00. Our test set is dominated by English reports, we did not run a user study or blind rating, local Whisper writes spoken Cantonese as standard written Chinese, so colloquial words come out in their written forms, and we have not measured its accuracy, and the adapter adds about 0.3 seconds of latency. By design, transcripts stay on the laptop, every claim shows its source, captions are editable, and the coach never scores hiring chances, accent or appearance. Thank you; we are happy to take questions.`,true);
 text(s,`Part 4  ·  ${P4.who}`,860,22,348,30,15,C.soft,true);
 text(s,'Limitations',72,200,680,50,30,C.gold,true);
-text(s,'Test set skews to English reports\nNo user study or blind rating\nCantonese ASR accuracy not measured\nAdapter adds ~0.3 s latency (p95)',72,262,680,200,30,C.white,true);
+text(s,'Test set skews to English reports\nNo user study or blind rating\nSpoken Cantonese becomes written Chinese\nAdapter adds ~0.3 s latency (p95)',72,262,680,200,30,C.white,true);
 text(s,'By design',800,200,400,50,30,C.gold,true);
 text(s,'Local transcripts\nVisible sources\nEditable captions\nNo hiring, accent or\nappearance scores',800,262,400,200,26,C.soft);
 text(s,'Thank you  ·  Questions welcome',72,600,1136,56,30,C.gold,true);
@@ -163,7 +163,7 @@ s=base('Q&A: who answers what', 'Appendix, outside the seven-minute talk. Each p
 [
  [P1,'Why retrieval?','Feedback quotes the actual job description, and every source can be inspected.'],
  [P2,'What if WebGL fails?','The 2D portrait takes over and the interview continues.'],
- [P3,'How accurate is Cantonese speech?','Not measured yet; the transcript is always editable before sending.'],
+ [P3,'Why is my Cantonese in written Chinese?','Whisper writes Cantonese as written Chinese; the transcript stays editable.'],
  [P4,'Why fine-tune if schema was 100%?','Prompting alone drifted language 7.6% of the time; the adapter fixed all 9 cases.'],
 ].forEach(([p,q,a],i)=>{const y=180+i*118;rect(s,72,y,1136,104,i%2?C.cream:C.sage);text(s,`Part ${p.n}\n${p.who}`,92,y+10,250,84,19,C.teal,true);text(s,q,360,y+10,330,84,22,C.ink,true);text(s,a,710,y+10,480,84,20,C.muted);});
 

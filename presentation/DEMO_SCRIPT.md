@@ -49,4 +49,5 @@ These are fictional demonstration answers, not claims about a student's actual w
 - **Why fine-tune if schema validity was already 100%?** Prompting alone drifted language on 7.6% of prompts; the adapter fixed all 9 cases with no regressions.
 - **Does a citation prove correctness?** No. It identifies the passage the claim relies on, so the user can check it.
 - **Why no employability score?** Practice feedback discusses evidence; it does not predict hiring outcomes or infer protected traits.
-- **What is the weakest part?** The test split is mostly English reports, Cantonese speech accuracy is unmeasured, and there was no user study.
+- **What is the weakest part?** The test split is mostly English reports, there was no user study, and local Whisper writes spoken Cantonese as standard written Chinese (colloquial words such as 咗 or 嘅 come out as 了 or 的) with unmeasured accuracy. The transcript is always editable, and STAR analysis and answer polishing work on written Chinese.
+- **Why not read emotion or eye contact?** Emotion recognition from faces is unreliable and can be unfair, and it needs a camera. The coach measures only observable delivery: pace, pauses and filler words.
