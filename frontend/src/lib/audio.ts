@@ -47,6 +47,41 @@ export function visemeOpenness(id: number) {
   return 0.35;
 }
 
+// RMS below this level counts as silence for pause metrics and end-of-speech detection.
+const SILENCE_RMS = 0.012;
+// Seconds of float drift tolerated when comparing accumulated chunk durations.
+const DURATION_EPSILON = 1e-6;
+
+export type EndOfSpeechOptions = { endSilenceSeconds?: number; minSpeechSeconds?: number };
+
+/**
+ * Per-chunk detector for hands-free answers: returns true exactly once, when the speaker has
+ * talked for at least `minSpeechSeconds` and then stayed quiet for `endSilenceSeconds`.
+ */
+export function createEndOfSpeechDetector({
+  endSilenceSeconds = 2,
+  minSpeechSeconds = 0.8,
+}: EndOfSpeechOptions = {}) {
+  let speech = 0;
+  let trailing = 0;
+  let fired = false;
+  return (rms: number, seconds: number): boolean => {
+    if (fired) return false;
+    if (rms >= SILENCE_RMS) {
+      speech += seconds;
+      trailing = 0;
+      return false;
+    }
+    if (speech > 0) trailing += seconds;
+    fired =
+      speech + DURATION_EPSILON >= minSpeechSeconds &&
+      trailing + DURATION_EPSILON >= endSilenceSeconds;
+    return fired;
+  };
+}
+
+export type RecordingOptions = { onEndOfSpeech?: () => void };
+
 export type RecordedAnswer = {
   blob: Blob;
   duration: number;
@@ -55,6 +90,7 @@ export type RecordedAnswer = {
 };
 export async function recordMicrophone(
   onLevel: (level: number) => void,
+  options: RecordingOptions = {},
 ): Promise<{ stream: MediaStream; stop: () => Promise<RecordedAnswer> }> {
   if (!navigator.mediaDevices?.getUserMedia)
     throw new Error('This browser cannot access a microphone. You can type your answer.');
@@ -71,6 +107,7 @@ export async function recordMicrophone(
     const mute = context.createGain();
     mute.gain.value = 0;
     const chunks: Float32Array[] = [];
+    const endOfSpeech = options.onEndOfSpeech ? createEndOfSpeechDetector() : null;
     let silence = 0,
       pauseLength = 0,
       pauseCount = 0,
@@ -84,7 +121,8 @@ export async function recordMicrophone(
       const rms = Math.sqrt(chunk.reduce((sum, v) => sum + v * v, 0) / chunk.length);
       onLevel(Math.min(1, rms * 7));
       const elapsed = chunk.length / context.sampleRate;
-      if (rms < 0.012) {
+      if (endOfSpeech?.(rms, elapsed)) options.onEndOfSpeech?.();
+      if (rms < SILENCE_RMS) {
         silence += elapsed;
         if (speechSeen) pauseLength += elapsed;
       } else {
@@ -212,10 +250,12 @@ export async function azureRecognizer(
   };
 }
 
+/** `finished` when the question played to the end (or could not play); `stopped` when cut off. */
+export type PlaybackEnd = 'finished' | 'stopped';
 type PlaybackCallbacks = {
   onStart: () => void;
   onMouth: (value: number) => void;
-  onEnd: () => void;
+  onEnd: (reason: PlaybackEnd) => void;
   onNotice: (text: string) => void;
 };
 /** Ranked names that actually sound good on macOS/Chrome. */
@@ -242,7 +282,8 @@ const VOICE_PREFERENCE: Record<string, string[]> = {
 };
 
 /** Novelty voices (Bells, Zarvox, Bad News…) must never be picked for an interview. */
-const NOVELTY = /bad news|bells|boing|bubbles|cellos|jester|organ|superstar|trinoids|whisper|wobble|zarvox|bahh|albert|fred|junior|ralph|good news/i;
+const NOVELTY =
+  /bad news|bells|boing|bubbles|cellos|jester|organ|superstar|trinoids|whisper|wobble|zarvox|bahh|albert|fred|junior|ralph|good news/i;
 
 /**
  * Pick the best available voice for the session language.
@@ -269,7 +310,11 @@ export function pickVoice(language: string): SpeechSynthesisVoice | null {
   if (!inFamily.length) return null;
   // Chrome joins the brand with a non-breaking space ("Google\u00a0粤語（香港）"), so compare
   // names with nbsp and ordinary whitespace collapsed.
-  const key = (value: string) => value.replace(/\u00a0/g, ' ').toLowerCase().replace(/\s+/g, '');
+  const key = (value: string) =>
+    value
+      .replace(/\u00a0/g, ' ')
+      .toLowerCase()
+      .replace(/\s+/g, '');
   // A Google network voice is a neural voice and sounds far less mechanical than the compact
   // on-device one, so it wins whenever it exists for this language family.
   const google = inFamily.filter((voice) => /google/i.test(key(voice.name)));
@@ -302,20 +347,20 @@ export function playQuestion(
     stopAudio?.();
     closeSynth?.();
     callbacks.onMouth(0);
-    callbacks.onEnd();
+    callbacks.onEnd('stopped');
   };
   const browser = () => {
     if (stopped) return;
     if (!('speechSynthesis' in window)) {
       callbacks.onNotice('Speech playback is unavailable. Read the question in the captions.');
-      callbacks.onEnd();
+      callbacks.onEnd('finished');
       return;
     }
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = pickVoice(language);
     if (!voice) {
       callbacks.onNotice('No system voice is available. Captions remain available.');
-      callbacks.onEnd();
+      callbacks.onEnd('finished');
       return;
     }
     utterance.voice = voice;
@@ -338,13 +383,13 @@ export function playQuestion(
       if (stopped) return;
       cancelAnimationFrame(frame);
       callbacks.onMouth(0);
-      callbacks.onEnd();
+      callbacks.onEnd('finished');
     };
     utterance.onerror = () => {
       if (stopped) return;
       cancelAnimationFrame(frame);
       callbacks.onMouth(0);
-      callbacks.onEnd();
+      callbacks.onEnd('finished');
       callbacks.onNotice('Speaker playback failed. You can continue with captions.');
     };
     stopAudio = () => speechSynthesis.cancel();
@@ -406,7 +451,7 @@ export function playQuestion(
       source.onended = () => {
         cancelAnimationFrame(frame);
         callbacks.onMouth(0);
-        callbacks.onEnd();
+        callbacks.onEnd('finished');
         void context.close();
       };
       source.start();

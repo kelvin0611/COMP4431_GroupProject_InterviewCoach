@@ -7,7 +7,6 @@ import {
   Clock3,
   Eye,
   EyeOff,
-  Keyboard,
   Mic,
   Pause,
   Play,
@@ -36,6 +35,25 @@ const statusLabels: Record<string, string> = {
   paused: 'Take a breath. We’re paused.',
   completed: 'Practice complete',
 };
+const HANDS_FREE_KEY = 'voxprep.handsFree';
+// Seconds the transcript stays visible before a hands-free answer is sent.
+const AUTO_SEND_SECONDS = 4;
+
+function readHandsFree() {
+  try {
+    return localStorage.getItem(HANDS_FREE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveHandsFree(on: boolean) {
+  try {
+    localStorage.setItem(HANDS_FREE_KEY, on ? '1' : '0');
+  } catch {
+    // A remembered preference is a convenience; the toggle still works for this visit.
+  }
+}
 
 export function Interview({
   id,
@@ -62,6 +80,10 @@ export function Interview({
   const [notice, setNotice] = useState('');
   const [avatarOff, setAvatarOff] = useState(false);
   const [metrics, setMetrics] = useState<RecordedAnswer | null>(null);
+  const [handsFree, setHandsFree] = useState(readHandsFree);
+  const [listenNext, setListenNext] = useState(false);
+  const [silenceStop, setSilenceStop] = useState<number | null>(null);
+  const [autoSendIn, setAutoSendIn] = useState<number | null>(null);
   const recorder = useRef<Awaited<ReturnType<typeof recordMicrophone>> | null>(null);
   const recognizer = useRef<Awaited<ReturnType<typeof azureRecognizer>> | null>(null);
   const playback = useRef<(() => void) | null>(null);
@@ -85,6 +107,8 @@ export function Interview({
     setElapsed(0);
     setStarted(false);
     setCaptions('');
+    setAutoSendIn(null);
+    setListenNext(false);
     playback.current?.();
   }, [turn?.id]);
   useEffect(() => {
@@ -120,13 +144,19 @@ export function Interview({
       {
         onStart: () => setSpeechState('speaking'),
         onMouth: setMouth,
-        onEnd: () => setSpeechState(''),
+        onEnd: (reason) => {
+          if (reason === 'finished') {
+            playback.current = null;
+            setListenNext(true);
+          }
+          setSpeechState('');
+        },
         onNotice: setNotice,
       },
     );
   }
   const readNewQuestion = useEffectEvent(() => {
-    if (speechConsent && !paused) speak();
+    if ((speechConsent || handsFree) && !paused) speak();
   });
   useEffect(() => {
     if (turn?.id) readNewQuestion();
@@ -134,11 +164,15 @@ export function Interview({
   async function beginRecording() {
     if (!session || paused || busy || audioBusy) return;
     stopSpeaking();
+    setAutoSendIn(null);
     const run = ++generation.current;
     setNotice('');
     setSpeechState('initializing');
     try {
-      const capture = await recordMicrophone(setLevel);
+      const capture = await recordMicrophone(
+        setLevel,
+        handsFree ? { onEndOfSpeech: () => setSilenceStop(run) } : {},
+      );
       if (run !== generation.current) {
         await capture.stop();
         return;
@@ -188,7 +222,12 @@ export function Interview({
             'Azure recognition is unavailable. Your recording will be transcribed locally when you stop.',
           );
         }
-      } else setNotice('Recording on this computer. Local transcription runs when you stop.');
+      } else
+        setNotice(
+          handsFree
+            ? 'Listening. Pause for two seconds when you have finished.'
+            : 'Recording on this computer. Local transcription runs when you stop.',
+        );
     } catch {
       if (run !== generation.current) return;
       setSpeechState('');
@@ -212,14 +251,16 @@ export function Interview({
     setMetrics(result);
     setElapsed(Math.round(result.duration));
     try {
+      let text = '';
       if (recognized.current.trim() && !recognitionFailed.current) {
-        setTranscript(recognized.current);
+        text = recognized.current;
         setNotice('Read your transcript and make any corrections before sending.');
       } else if (session) {
-        const transcription = await api.transcribe(result.blob, answerLanguage);
-        setTranscript(transcription.text);
+        text = (await api.transcribe(result.blob, answerLanguage)).text;
         setNotice('Local transcription is ready. Please check the wording before sending.');
       }
+      setTranscript(text);
+      if (handsFree && text.trim()) setAutoSendIn(AUTO_SEND_SECONDS);
     } catch (e) {
       setNotice(`${errorMessage(e)} You can type your answer below.`);
     } finally {
@@ -229,12 +270,50 @@ export function Interview({
   const stopAtLimit = useEffectEvent(() => {
     void finishRecording();
   });
+  const listenHandsFree = useEffectEvent(() => {
+    void beginRecording();
+  });
+  const sendHandsFree = useEffectEvent(() => {
+    void submit();
+  });
+  // Hands-free: listen once the question has finished playing and the coach is idle.
+  useEffect(() => {
+    if (!listenNext || !handsFree) return;
+    if (paused || busy || audioBusy || speechState === 'speaking') return;
+    setListenNext(false);
+    listenHandsFree();
+  }, [listenNext, handsFree, paused, busy, audioBusy, speechState]);
+  // Hands-free: the recorder reported a sustained pause after speech in this recording.
+  useEffect(() => {
+    if (silenceStop === null) return;
+    setSilenceStop(null);
+    if (silenceStop === generation.current && recording) stopAtLimit();
+  }, [silenceStop, recording]);
+  // Hands-free: count down, then send unless the user started editing.
+  useEffect(() => {
+    if (autoSendIn === null) return;
+    if (autoSendIn <= 0) {
+      setAutoSendIn(null);
+      sendHandsFree();
+      return;
+    }
+    const timer = setTimeout(() => setAutoSendIn((n) => (n === null ? null : n - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [autoSendIn]);
+  function toggleHandsFree(on: boolean) {
+    setHandsFree(on);
+    saveHandsFree(on);
+    setAutoSendIn(null);
+    setListenNext(on && !recording && speechState !== 'transcribing');
+  }
   useEffect(() => {
     if (!recording) return;
     const timer = setTimeout(stopAtLimit, 300000);
     return () => clearTimeout(timer);
   }, [recording]);
   async function control(action: 'pause' | 'resume' | 'skip' | 'retry' | 'end' | 'cancel') {
+    setAutoSendIn(null);
+    setListenNext(false);
     generation.current++;
     recordingAbort.current?.abort();
     recordingAbort.current = null;
@@ -244,6 +323,7 @@ export function Interview({
     await live.control(action);
   }
   async function submit() {
+    setAutoSendIn(null);
     if (!session || !transcript.trim() || paused || busy || audioBusy) return;
     stopSpeaking();
     await live.answer({
@@ -383,9 +463,14 @@ export function Interview({
               <label htmlFor="answer">
                 {session.language === 'zh-HK' ? 'Your answer · 你嘅回答' : 'Your answer'}
               </label>
-              <span>
-                <Keyboard size={14} /> Type or speak
-              </span>
+              <label className="hands-free-toggle">
+                <input
+                  type="checkbox"
+                  checked={handsFree}
+                  onChange={(event) => toggleHandsFree(event.target.checked)}
+                />
+                Hands-free conversation
+              </label>
             </div>
             <div className="answer-language">
               <label htmlFor="answer-language">Answer language</label>
@@ -408,8 +493,12 @@ export function Interview({
                   : 'Think of a specific experience. What happened, what did you do, and what changed?'
               }
               value={transcript + (captions ? ` ${captions}` : '')}
-              onFocus={() => setStarted(true)}
+              onFocus={() => {
+                setStarted(true);
+                setAutoSendIn(null);
+              }}
               onChange={(e) => {
+                setAutoSendIn(null);
                 setTranscript(e.target.value);
                 setCorrected(true);
                 setStarted(true);
@@ -427,6 +516,17 @@ export function Interview({
               <p className="speech-notice" role="status">
                 {notice}
               </p>
+            )}
+            {autoSendIn !== null && (
+              <div className="auto-send" role="status">
+                <span>Sending in {autoSendIn}s</span>
+                <button type="button" className="text-button" onClick={() => void submit()}>
+                  Send now
+                </button>
+                <button type="button" className="text-button" onClick={() => setAutoSendIn(null)}>
+                  Keep editing
+                </button>
+              </div>
             )}
             <div className="answer-actions">
               {recording ? (
@@ -484,6 +584,7 @@ export function Interview({
               className="text-button"
               disabled={busy || paused || audioBusy}
               onClick={() => {
+                setAutoSendIn(null);
                 setTranscript('');
                 setMetrics(null);
                 setElapsed(0);

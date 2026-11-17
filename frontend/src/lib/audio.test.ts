@@ -1,7 +1,39 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { encodeWav, recordMicrophone, visemeOpenness } from './audio';
+import { createEndOfSpeechDetector, encodeWav, recordMicrophone, visemeOpenness } from './audio';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('end-of-speech detection for hands-free answers', () => {
+  const SPEECH = 0.1;
+  const QUIET = 0.001;
+  it('does not fire while the speaker has not started talking', () => {
+    const detect = createEndOfSpeechDetector({ endSilenceSeconds: 2, minSpeechSeconds: 0.8 });
+    const fired = Array.from({ length: 50 }, () => detect(QUIET, 0.1));
+    expect(fired.some(Boolean)).toBe(false);
+  });
+  it('fires once after enough speech followed by sustained silence', () => {
+    const detect = createEndOfSpeechDetector({ endSilenceSeconds: 2, minSpeechSeconds: 0.8 });
+    for (let i = 0; i < 10; i++) expect(detect(SPEECH, 0.1)).toBe(false);
+    const quiet = Array.from({ length: 19 }, () => detect(QUIET, 0.1));
+    expect(quiet.some(Boolean)).toBe(false);
+    expect(detect(QUIET, 0.1)).toBe(true);
+    expect(detect(QUIET, 0.1)).toBe(false);
+  });
+  it('resets the silence clock when the speaker resumes mid-pause', () => {
+    const detect = createEndOfSpeechDetector({ endSilenceSeconds: 2, minSpeechSeconds: 0.8 });
+    for (let i = 0; i < 10; i++) detect(SPEECH, 0.1);
+    for (let i = 0; i < 15; i++) detect(QUIET, 0.1);
+    detect(SPEECH, 0.1);
+    const quiet = Array.from({ length: 19 }, () => detect(QUIET, 0.1));
+    expect(quiet.some(Boolean)).toBe(false);
+  });
+  it('ignores a cough shorter than the minimum speech length', () => {
+    const detect = createEndOfSpeechDetector({ endSilenceSeconds: 2, minSpeechSeconds: 0.8 });
+    detect(SPEECH, 0.2);
+    const quiet = Array.from({ length: 40 }, () => detect(QUIET, 0.1));
+    expect(quiet.some(Boolean)).toBe(false);
+  });
+});
 
 describe('local audio encoding', () => {
   it('writes a mono PCM WAV with a valid 16 kHz header', () => {

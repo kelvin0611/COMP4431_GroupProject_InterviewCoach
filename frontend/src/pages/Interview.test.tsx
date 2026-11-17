@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Interview } from './Interview';
 import { useLiveSession } from '../lib/useLiveSession';
-import { azureRecognizer, recordMicrophone } from '../lib/audio';
+import { azureRecognizer, playQuestion, recordMicrophone } from '../lib/audio';
+import { api } from '../lib/api';
 import type { Session } from '../lib/types';
 
 vi.mock('../lib/useLiveSession', () => ({ useLiveSession: vi.fn() }));
@@ -12,6 +13,10 @@ vi.mock('../lib/audio', () => ({
   azureRecognizer: vi.fn(),
   playQuestion: vi.fn(() => vi.fn()),
 }));
+vi.mock('../lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/api')>();
+  return { ...actual, api: { ...actual.api, transcribe: vi.fn() } };
+});
 vi.mock('../components/Avatar', () => ({ default: () => <div>Coach portrait</div> }));
 
 const session: Session = {
@@ -41,7 +46,10 @@ const session: Session = {
   provider: 'demo',
 };
 const control = vi.fn().mockResolvedValue(undefined);
+const answer = vi.fn().mockResolvedValue(undefined);
 beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
   vi.mocked(useLiveSession).mockReturnValue({
     session,
     busy: false,
@@ -49,8 +57,101 @@ beforeEach(() => {
     setError: vi.fn(),
     state: 'ready',
     streamText: '',
-    answer: vi.fn(),
+    answer,
     control,
+  });
+});
+
+type PlaybackCallbacks = Parameters<typeof playQuestion>[3];
+
+function captureQuestionPlayback() {
+  const playback: { callbacks?: PlaybackCallbacks } = {};
+  vi.mocked(playQuestion).mockImplementation((_text, _language, _consent, callbacks) => {
+    playback.callbacks = callbacks;
+    return vi.fn();
+  });
+  return playback;
+}
+
+function grantMicrophone() {
+  const stop = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(), duration: 6, pauseCount: 1, silenceSeconds: 2 });
+  vi.mocked(recordMicrophone).mockResolvedValue({ stream: { active: true } as MediaStream, stop });
+  return stop;
+}
+
+async function answerHandsFree(playback: { callbacks?: PlaybackCallbacks }) {
+  vi.mocked(api.transcribe).mockResolvedValue({ text: 'I led the API fix', provider: 'whisper' });
+  await waitFor(() => expect(playback.callbacks).toBeDefined());
+  act(() => playback.callbacks!.onEnd('finished'));
+  await waitFor(() => expect(recordMicrophone).toHaveBeenCalledOnce());
+  const options = vi.mocked(recordMicrophone).mock.calls[0][1];
+  await act(async () => options?.onEndOfSpeech?.());
+}
+
+describe('hands-free conversation', () => {
+  it('starts listening when the question finishes playing', async () => {
+    localStorage.setItem('voxprep.handsFree', '1');
+    const playback = captureQuestionPlayback();
+    grantMicrophone();
+    render(
+      <Interview id="s1" navigate={vi.fn()} speechConsent={false} onSpeechConsent={vi.fn()} />,
+    );
+    await waitFor(() => expect(playback.callbacks).toBeDefined());
+    act(() => playback.callbacks!.onEnd('finished'));
+    await waitFor(() => expect(recordMicrophone).toHaveBeenCalledOnce());
+    expect(await screen.findByRole('button', { name: 'Finish recording' })).toBeInTheDocument();
+  });
+  it('does not start listening when playback was stopped by hand', async () => {
+    localStorage.setItem('voxprep.handsFree', '1');
+    const playback = captureQuestionPlayback();
+    grantMicrophone();
+    render(
+      <Interview id="s1" navigate={vi.fn()} speechConsent={false} onSpeechConsent={vi.fn()} />,
+    );
+    await waitFor(() => expect(playback.callbacks).toBeDefined());
+    act(() => playback.callbacks!.onEnd('stopped'));
+    expect(recordMicrophone).not.toHaveBeenCalled();
+  });
+  it('sends the transcript after a countdown the user can skip', async () => {
+    localStorage.setItem('voxprep.handsFree', '1');
+    const playback = captureQuestionPlayback();
+    grantMicrophone();
+    render(
+      <Interview id="s1" navigate={vi.fn()} speechConsent={false} onSpeechConsent={vi.fn()} />,
+    );
+    await answerHandsFree(playback);
+    expect(await screen.findByText(/Sending in \d/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Send now' }));
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith(
+        expect.objectContaining({ transcript: 'I led the API fix' }),
+      ),
+    );
+  });
+  it('cancels the automatic send as soon as the user edits the transcript', async () => {
+    localStorage.setItem('voxprep.handsFree', '1');
+    const playback = captureQuestionPlayback();
+    grantMicrophone();
+    render(
+      <Interview id="s1" navigate={vi.fn()} speechConsent={false} onSpeechConsent={vi.fn()} />,
+    );
+    await answerHandsFree(playback);
+    await screen.findByText(/Sending in \d/);
+    await userEvent.setup().type(screen.getByLabelText('Your answer'), ' and tested it');
+    expect(screen.queryByText(/Sending in \d/)).not.toBeInTheDocument();
+    expect(answer).not.toHaveBeenCalled();
+  });
+  it('remembers the hands-free choice for the next session', async () => {
+    render(
+      <Interview id="s1" navigate={vi.fn()} speechConsent={false} onSpeechConsent={vi.fn()} />,
+    );
+    grantMicrophone();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('checkbox', { name: 'Hands-free conversation' }));
+    expect(localStorage.getItem('voxprep.handsFree')).toBe('1');
   });
 });
 

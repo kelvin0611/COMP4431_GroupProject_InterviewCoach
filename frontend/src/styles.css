@@ -1369,6 +1369,36 @@ main {
 .answer-label label {
   font-size: 0.8rem;
 }
+.answer-label .hands-free-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #3e5b3e;
+  cursor: pointer;
+}
+.hands-free-toggle input {
+  accent-color: #256456;
+  width: 15px;
+  height: 15px;
+}
+.auto-send {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #1f4d43;
+  padding: 0.55rem 0.75rem;
+  background: #e3ecd2;
+  border-left: 3px solid #256456;
+  border-radius: 6px;
+  margin-bottom: 0.8rem;
+}
+.auto-send span {
+  margin-right: auto;
+}
 .answer-panel textarea {
   font-size: 0.83rem;
   line-height: 1.8;
